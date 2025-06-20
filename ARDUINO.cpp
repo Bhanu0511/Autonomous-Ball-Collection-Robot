@@ -1,209 +1,149 @@
-#include <Servo.h>
+#include <AFMotor.h>       // Include Adafruit Motor Shield library for motor control
+#include <NewPing.h>       // Include NewPing library for ultrasonic sensor
+#include <Servo.h>         // Include Servo library for controlling servo motors
 
-#define TRIGGER_PIN 3
-#define ECHO_PIN    6
-// Motor A connections
-int bl1=8;
-int bl2=7;
-int bls=A2;
-// Motor B connections
-int br1=12;
-int br2=13;
-int brs=A0;
+// Define pins for ultrasonic sensor
+#define TRIGGER_PIN A1        // Ultrasonic sensor trigger pin connected to A1
+#define ECHO_PIN A0           // Ultrasonic sensor echo pin connected to A0
+#define MAX_DISTANCE 200      // Maximum measurable distance in cm
 
-int fr1=10;
-int fr2=11;
-int frs=A3;
-// Motor B connections
-int fl1=5;
-int fl2=4;
-int fls=A1;
+// Initialize ultrasonic sensor using NewPing library
+NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
 
-Servo armServo; // Servo motor for the arm
+// Initialize servo object for controlling arm
+Servo myservo; 
+
+// Variables to hold sensor readings
+unsigned int DISTANCE = 0;    // Stores distance measured by ultrasonic sensor
+unsigned int IR_VALUE = 0;    // Placeholder for IR sensor reading (not used in this code)
+
+// Initialize DC motors using Adafruit Motor Shield
+AF_DCMotor motorLeft(1);   // Motor connected to M1 (left motor)
+AF_DCMotor motorRight(2);  // Motor connected to M2 (right motor)
+
+/*
+  MOTOR CONFIGURATION:
+  - The robot uses 4 DC motors.
+  - Motors on the same side (front and back) are connected together.
+  - Both left-side motors rotate together, and both right-side motors rotate together.
+  - This enables synchronized movement for each side, useful for forward, backward, and turning motions.
+*/
 
 void setup() {
-  pinMode(TRIGGER_PIN, OUTPUT);
-  pinMode(ECHO_PIN, INPUT);
-  pinMode(br1, OUTPUT);
-  pinMode(br2, OUTPUT);
+  Serial.begin(9600);             // Start serial communication for debugging
 
-  pinMode(bl1, OUTPUT);
-  pinMode(bl2, OUTPUT);
+  motorLeft.setSpeed(200);       // Set speed of left motor (range: 0–255)
+  motorRight.setSpeed(200);      // Set speed of right motor (range: 0–255)
 
-  pinMode(fl1, OUTPUT);
-  pinMode(fl2, OUTPUT);
-
-  pinMode(fr1, OUTPUT);
-  pinMode(fr2, OUTPUT);
-
-  pinMode(brs, OUTPUT);
-  pinMode(bls, OUTPUT);
-  pinMode(frs, OUTPUT);
-  pinMode(fls, OUTPUT);
-  
-  armServo.attach(2); // Attach the servo to pin 3  
-  Serial.begin(9600);
+  myservo.attach(A2);            // Attach servo to analog pin A2
+  myservo.write(0);              // Initialize servo position
 }
+
+
 
 void loop() {
-  armServo.write(0);
-  long duration, distance;
-  
-  // Send pulse to trigger pin
-  digitalWrite(TRIGGER_PIN, LOW);
-  delayMicroseconds(2);
-  digitalWrite(TRIGGER_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIGGER_PIN, LOW);
-  
-  // Read the pulse on echo pin
-  duration = pulseIn(ECHO_PIN, HIGH);
-  
-  // Calculate distance in cm
-  distance = duration * 0.034 / 2;
-  
+  // Measure distance using ultrasonic sensor
+  DISTANCE = sonar.ping_cm();    
+
   // Print distance to serial monitor
-  Serial.print("Distance: ");
-  Serial.println(distance);
-  delay(500);
-  
-  // If distance is less than a threshold, move towards the object
-  if (distance < 40 && distance>10) { // Adjust the threshold as needed
-    moveTowardsBall();
-    Serial.println("moving");
-    delay(50); // Adjust delay according to your robot's speed and response time
-    stopMoving();
-    delay(1000);
+  Serial.print("distance");                   
+  Serial.println(DISTANCE);                   
+
+  // If object is between 10 and 40 cm, move forward briefly
+  if(DISTANCE > 10 && DISTANCE < 40) {
+    moveForward();
+    delay(500);
+    stopMotors();
   }
-  else if (distance<10){
-    stopMoving();
-    collectBall();
-    Serial.println("collect ball");
-    }
+  // If object is very close (<10 cm but not 0), stop and collect ball
+  else if(DISTANCE < 10 && DISTANCE != 0) {
+    stopMotors();
+    //Collectball();   // Uncomment this line to activate ball collection
+  }
+  // If no object is detected, start searching for ball
   else {
-    // If the object is not within range, stop
     findBall();
-    Serial.println("finding");
-    delay(200);
   }
 }
 
-void stopMoving(){
-  digitalWrite(br1, LOW);
-  digitalWrite(br2, LOW);
 
-  digitalWrite(bl1, LOW);
-  digitalWrite(bl2, LOW);
 
-  digitalWrite(fl1, LOW);
-  digitalWrite(fl2, LOW);
-
-  digitalWrite(fr1, LOW);
-  digitalWrite(fr2, LOW);
-  
+void moveForward() {
+  // Move both motors forward
+  motorLeft.run(FORWARD);
+  motorRight.run(FORWARD);
 }
 
-void moveTowardsBall() {
-  // Implement the movement logic here
-  // For example, you can control the motors to move the robot towards the ball
-  // Example:
-  digitalWrite(br1, LOW);
-  digitalWrite(br2, HIGH);
-  
-  digitalWrite(bl1, LOW);
-  digitalWrite(bl2, HIGH);
 
-  digitalWrite(fl1, HIGH);
-  digitalWrite(fl2, LOW);
 
-  digitalWrite(fr1, LOW);
-  digitalWrite(fr2, HIGH); 
-
-  analogWrite(brs,255);
-  analogWrite(bls,255);
-  analogWrite(frs,255);
-  analogWrite(fls,255);
-
-  delay(500);
+void moveBackward() {
+  // Move both motors backward
+  motorLeft.run(BACKWARD);
+  motorRight.run(BACKWARD);
 }
 
+
+
+void turnLeft() {
+  // Turn the robot left by rotating left motor backward and right motor forward
+  motorLeft.run(BACKWARD);
+  motorRight.run(FORWARD);
+}
+
+
+
+void turnRight() {
+  // Turn the robot right by rotating left motor forward and right motor backward
+  motorLeft.run(FORWARD);
+  motorRight.run(BACKWARD);
+}
+
+
+
+void stopMotors() {
+  // Stop both motors
+  motorLeft.run(RELEASE);
+  motorRight.run(RELEASE);
+}
 
 
 
 void findBall() {
-  // Stop the motors
-  digitalWrite(br1, LOW);
-  digitalWrite(br2, LOW);
-
-  digitalWrite(bl1, LOW);
-  digitalWrite(bl2, LOW);
-
-  digitalWrite(fl1, LOW);
-  digitalWrite(fl2, LOW);
-
-  digitalWrite(fr1, LOW);
-  digitalWrite(fr2, LOW);
-  
-  delay(200);
-
- digitalWrite(br1, LOW);
-  digitalWrite(br2, HIGH);
-  
-  digitalWrite(bl1, HIGH);
-  digitalWrite(bl2, LOW);
-
-  digitalWrite(fl1, HIGH);
-  digitalWrite(fl2, LOW);
-
-  digitalWrite(fr1, LOW);
-  digitalWrite(fr2, HIGH);
-
-  analogWrite(brs,255);
-  analogWrite(fls,255);
-  analogWrite(bls,255);
-  analogWrite(frs,255);
-
-  delay(100);
-
-  digitalWrite(br1, LOW);
-  digitalWrite(br2, LOW);
-  
-  digitalWrite(bl1, LOW);
-  digitalWrite(bl2, LOW);
-
-  digitalWrite(fl1, LOW);
-  digitalWrite(fl2, LOW);
-
-  digitalWrite(fr1, LOW);
-  digitalWrite(fr2, LOW);
-
-   delay(1000);
-
+  // Rotate in place to search for the ball
+  turnRight();
+  delay(2000);
+  stopMotors();
 }
 
 
 
-
-
 void collectBall() {
- // Move the arm to collect the ball
-  // for (int angle = 0; angle <= 180; angle++) {
-  //   armServo.write(angle); // Increase angle gradually
-  //   delay(10); // Adjust delay for desired speed
-  // }
-  // delay(1000); // Wait for the arm to reach the ball
-  
-  // for (int angle = 180; angle >= 0; angle--) {
-  //   armServo.write(angle); // Decrease angle gradually
-  //   delay(10); // Adjust delay for desired speed
-  // }
-  // delay(1000); // Wait for the arm to release the ball
-  armServo.write(0);
-  armServo.write(90);
-  armServo.write(180);
-  delay(500);
-  armServo.write(180);
-  armServo.write(90);
-  armServo.write(0);
+  // Simple servo movement sequence for ball collection
+  // The commented version below provides smoother motion
 
+  // for (int angle = 0; angle <= 180; angle++) {
+  //   armServo.write(angle); 
+  //   delay(10); 
+  // }
+  // delay(1000); 
+  // for (int angle = 180; angle >= 0; angle--) {
+  //   armServo.write(angle); 
+  //   delay(10); 
+  // }
+  // delay(1000); 
+
+  myservo.write(0);
+  delay(500);
+
+  myservo.write(90);
+  delay(700);   // Extra time to push the ball fully
+
+  myservo.write(180);
+  delay(500);
+
+  myservo.write(90);
+  delay(700);
+
+  myservo.write(0);
+  delay(500);
 }
